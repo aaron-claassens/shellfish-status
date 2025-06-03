@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>Shellfish Harvest Status Pie Chart</title>
   <!-- Chart.js CDN (v4.x) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -52,22 +52,13 @@
   <div id="error-message"></div>
 
   <script>
-    // ───────────────────────────────────────────────────────────────
     // 1. Configuration
-    // ───────────────────────────────────────────────────────────────
     const SOURCE_URL = "https://www.foodauthority.nsw.gov.au/industry/shellfish/status";
-
-    // Use AllOrigins free CORS proxy to avoid activation steps:
-    // https://api.allorigins.win/raw?url=<encoded URL>
-    const CORS_PROXY_BASE = "https://thingproxy.freeboard.io/fetch/";
-
+    const CORS_PROXY_BASE = "https://thingproxy.freeboard.io/fetch/"; 
     const FETCH_URL = CORS_PROXY_BASE + encodeURIComponent(SOURCE_URL);
+    const REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
 
-    const REFRESH_INTERVAL = 15 * 60 * 1000;
-
-    // ───────────────────────────────────────────────────────────────
     // 2. Utility: Fetch & Parse
-    // ───────────────────────────────────────────────────────────────
     async function fetchHtml() {
       const response = await fetch(FETCH_URL);
       if (!response.ok) {
@@ -77,42 +68,39 @@
     }
 
     function parseDocument(htmlString) {
-      const parser = new DOMParser();
-      return parser.parseFromString(htmlString, "text/html");
+      return new DOMParser().parseFromString(htmlString, "text/html");
     }
 
-    // ───────────────────────────────────────────────────────────────
-    // 3. Data Extraction: Count Open vs. Closed
-    // ───────────────────────────────────────────────────────────────
+    // 3. Data Extraction: Count Open vs. Closed using divs
     function countStatuses(doc) {
+      const statusElements = doc.querySelectorAll(".sqap-card__status .field__item");
+      if (!statusElements.length) {
+        throw new Error("Could not find any .sqap-card__status elements in fetched HTML.");
+      }
+
       let openCount = 0;
       let closedCount = 0;
-      const table = doc.querySelector("table");
-      if (!table) {
-        throw new Error("Could not find status table in fetched HTML.");
-      }
-      const rows = table.querySelectorAll("tbody tr");
-      rows.forEach(row => {
-        const text = row.textContent.toLowerCase();
-        if (text.includes(" open")) {
+
+      statusElements.forEach(elem => {
+        const text = elem.textContent.trim().toLowerCase();
+        if (text === "open") {
           openCount++;
-        } else if (text.includes(" closed")) {
+        } else if (text === "closed") {
           closedCount++;
         }
       });
+
       return { openCount, closedCount };
     }
 
-    // ───────────────────────────────────────────────────────────────
     // 4. Chart Setup
-    // ───────────────────────────────────────────────────────────────
     const ctx = document.getElementById("statusPie").getContext("2d");
     const pieChart = new Chart(ctx, {
       type: "pie",
       data: {
         labels: ["Open", "Closed"],
         datasets: [{
-          data: [1, 1],
+          data: [1, 1], // dummy until real data arrives
           backgroundColor: ["#66c2a5", "#fc8d62"],
           borderColor: "#ffffff",
           borderWidth: 1
@@ -129,17 +117,22 @@
       }
     });
 
-    // ───────────────────────────────────────────────────────────────
     // 5. Update Function: Fetch, Parse, Count & Redraw
-    // ───────────────────────────────────────────────────────────────
     async function updateChart() {
       try {
         document.getElementById("error-message").textContent = "";
         const html = await fetchHtml();
         const doc = parseDocument(html);
         const { openCount, closedCount } = countStatuses(doc);
+
+        const total = openCount + closedCount;
+        if (total === 0) {
+          throw new Error("No open or closed statuses found.");
+        }
+
         pieChart.data.datasets[0].data = [openCount, closedCount];
         pieChart.update();
+
         const now = new Date();
         document.getElementById("last-updated").textContent =
           `Last updated: ${now.toLocaleString("en-AU", {
@@ -154,14 +147,11 @@
       } catch (err) {
         console.error("Error updating chart:", err);
         document.getElementById("error-message").textContent =
-          `Could not load data: ${err.message}. 
-          Please ensure you are serving this file via HTTP (not file://) and that the proxy is reachable.`;
+          `Could not load data: ${err.message}`;
       }
     }
 
-    // ───────────────────────────────────────────────────────────────
     // 6. Initialization & Auto-Refresh
-    // ───────────────────────────────────────────────────────────────
     updateChart();
     setInterval(updateChart, REFRESH_INTERVAL);
   </script>
