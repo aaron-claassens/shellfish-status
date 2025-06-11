@@ -29,20 +29,34 @@ jobs:
         run: |
           python - << 'PYCODE'
           import requests
+          from requests.adapters import HTTPAdapter, Retry
           from bs4 import BeautifulSoup
-          import json
-          import os
-          import datetime
+          import json, os, datetime
 
           URL = "https://www.foodauthority.nsw.gov.au/industry/shellfish/status"
-          resp = requests.get(URL, timeout=60)
-          resp.raise_for_status()
-          soup = BeautifulSoup(resp.text, "html.parser")
 
+          # 1) Set up a Session with retries/backoff
+          session = requests.Session()
+          retries = Retry(
+              total=5,
+              backoff_factor=1,
+              status_forcelist=[429, 500, 502, 503, 504],
+              allowed_methods=["GET"],
+          )
+          session.mount("https://", HTTPAdapter(max_retries=retries))
+
+          # 2) Fetch with a generous timeout (connect, read)
+          headers = {"User-Agent": "Mozilla/5.0 (compatible; GitHub Actions)"}
+          resp = session.get(URL, headers=headers, timeout=(10, 120))
+          resp.raise_for_status()
+
+          # 3) Parse out open/closed
+          soup = BeautifulSoup(resp.text, "html.parser")
           status_divs = soup.select(".sqap-card__status .field__item")
           open_count = sum(1 for d in status_divs if d.text.strip().lower() == "open")
           closed_count = sum(1 for d in status_divs if d.text.strip().lower() == "closed")
 
+          # 4) Write status.json
           data = {
               "open": open_count,
               "closed": closed_count,
