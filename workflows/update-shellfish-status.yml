@@ -2,6 +2,7 @@ name: Update Shellfish Status JSON
 
 # Run every 15 minutes
 on:
+  workflow_dispatch:
   schedule:
     - cron: '*/15 * * * *'
 
